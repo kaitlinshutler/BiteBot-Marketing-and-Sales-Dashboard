@@ -89,6 +89,7 @@ interface BarChartWidgetProps {
   color?: string;
   secondaryColor?: string;
   format?: string;
+  secondaryFormat?: string;
   height?: number;
   barLabel?: string;
   secondaryLabel?: string;
@@ -96,7 +97,7 @@ interface BarChartWidgetProps {
 
 export function BarChartWidget({
   data, title, color = '#14b8a6', secondaryColor = '#3b82f6',
-  format = 'integer', height = 280, barLabel = 'Value', secondaryLabel = 'Secondary'
+  format = 'integer', secondaryFormat, height = 280, barLabel = 'Value', secondaryLabel = 'Secondary'
 }: BarChartWidgetProps) {
   if (!data || data.length === 0) {
     return (
@@ -107,6 +108,7 @@ export function BarChartWidget({
   }
 
   const hasSecondary = data.some(d => d.secondaryValue !== undefined);
+  const secFormat = secondaryFormat || format;
 
   return (
     <ChartCard title={title} height={height}>
@@ -119,7 +121,10 @@ export function BarChartWidget({
           <Tooltip
             contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 12 }}
             labelStyle={{ color: '#f8fafc', fontWeight: 600 }}
-            formatter={(v: number, name: string) => [formatValue(v, format), name]}
+            formatter={(v: number, name: string) => {
+              const fmt = name === secondaryLabel ? secFormat : format;
+              return [formatValue(v, fmt), name];
+            }}
           />
           <Bar dataKey="value" fill={color} radius={[4, 4, 0, 0]} name={barLabel} />
           {hasSecondary && <Bar dataKey="secondaryValue" fill={secondaryColor} radius={[4, 4, 0, 0]} name={secondaryLabel} />}

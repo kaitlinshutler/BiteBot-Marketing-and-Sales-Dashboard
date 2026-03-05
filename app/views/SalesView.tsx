@@ -128,6 +128,7 @@ export function SalesView({ sales, trends, prevSales, segment }: SalesViewProps)
             barLabel="Cash ($)"
             secondaryLabel="Closes"
             format="currency_whole"
+            secondaryFormat="integer"
           />
         </div>
       </Section>
