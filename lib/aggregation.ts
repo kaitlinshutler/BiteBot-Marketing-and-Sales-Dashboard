@@ -59,6 +59,42 @@ export function normalizeSegment(raw: string): string {
 // Period helpers
 // ============================================================================
 
+// Safely convert any date value to YYYY-MM-DD string
+export function toDateString(value: unknown): string {
+  if (!value) return '';
+  
+  // Already a string
+  if (typeof value === 'string') {
+    // Handle ISO format
+    if (value.includes('T')) return value.split('T')[0];
+    // Already YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    // Try to parse
+    const d = new Date(value);
+    if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+    return value;
+  }
+  
+  // Number (Google Sheets serial date)
+  if (typeof value === 'number') {
+    // Google Sheets epoch is Dec 30, 1899
+    const d = new Date((value - 25569) * 86400 * 1000);
+    return d.toISOString().split('T')[0];
+  }
+  
+  // Date object
+  if (value instanceof Date) {
+    return value.toISOString().split('T')[0];
+  }
+  
+  // Object with toISOString (Date-like)
+  if (typeof value === 'object' && value !== null && 'toISOString' in value) {
+    return (value as Date).toISOString().split('T')[0];
+  }
+  
+  return String(value);
+}
+
 export function getWeekStart(dateStr: string): string {
   // Handle various date formats and return Monday of that week as YYYY-MM-DD
   const d = new Date(dateStr);
@@ -108,12 +144,12 @@ export function extractPeriods(marketingRows: MarketingWeeklyRow[]): {
 
   for (const row of marketingRows) {
     if (row.week_start) {
-      const ws = typeof row.week_start === 'string' 
-        ? row.week_start.split('T')[0] 
-        : row.week_start;
-      weekSet.add(ws);
-      monthSet.add(row.month || getMonthFromWeekStart(ws));
-      quarterSet.add(row.quarter || getQuarterFromMonth(row.month || getMonthFromWeekStart(ws)));
+      const ws = toDateString(row.week_start);
+      if (ws) {
+        weekSet.add(ws);
+        monthSet.add(row.month || getMonthFromWeekStart(ws));
+        quarterSet.add(row.quarter || getQuarterFromMonth(row.month || getMonthFromWeekStart(ws)));
+      }
     }
   }
 
@@ -148,9 +184,7 @@ export function aggregateMarketing(
     if (!includeInSegment(row.campaign_type, segment)) return false;
     
     // Period filter
-    const ws = typeof row.week_start === 'string' 
-      ? row.week_start.split('T')[0] 
-      : String(row.week_start);
+    const ws = toDateString(row.week_start);
     
     if (viewMode === 'weekly') {
       return ws === selectedPeriod;
@@ -215,9 +249,7 @@ export function countTotalLeads(
     // Company includes all
     
     // Period filter
-    const dateAdded = typeof row.date_added === 'string' 
-      ? row.date_added.split('T')[0] 
-      : String(row.date_added);
+    const dateAdded = toDateString(row.date_added);
     const ws = getWeekStart(dateAdded);
     
     if (viewMode === 'weekly') {
@@ -247,9 +279,7 @@ export function aggregateSales(
   const filtered = salesRows.filter(row => {
     if (!includeInSegment(row.segment, segment)) return false;
     
-    const ws = typeof row.week_start === 'string' 
-      ? row.week_start.split('T')[0] 
-      : String(row.week_start);
+    const ws = toDateString(row.week_start);
     
     if (viewMode === 'weekly') return ws === selectedPeriod;
     if (viewMode === 'monthly') return (row.month || getMonthFromWeekStart(ws)) === selectedPeriod;
@@ -303,9 +333,7 @@ export function aggregateCashFromReps(
     // Company includes both
     
     // Period filter
-    const ws = typeof row.week_start === 'string' 
-      ? row.week_start.split('T')[0] 
-      : String(row.week_start);
+    const ws = toDateString(row.week_start);
     
     if (viewMode === 'weekly') return ws === selectedPeriod;
     if (viewMode === 'monthly') return (row.month || getMonthFromWeekStart(ws)) === selectedPeriod;
@@ -327,9 +355,7 @@ export function aggregateAttribution(
   const filtered = rows.filter(row => {
     if (!includeInSegment(row.segment, segment)) return false;
     
-    const ws = typeof row.week_start === 'string' 
-      ? row.week_start.split('T')[0] 
-      : String(row.week_start);
+    const ws = toDateString(row.week_start);
     
     if (viewMode === 'weekly') return ws === selectedPeriod;
     if (viewMode === 'monthly') return getMonthFromWeekStart(ws) === selectedPeriod;
@@ -379,9 +405,7 @@ export function aggregateSalesReps(
 ): SalesRepMetrics[] {
   // Filter by period
   const filtered = rows.filter(row => {
-    const ws = typeof row.week_start === 'string' 
-      ? row.week_start.split('T')[0] 
-      : String(row.week_start);
+    const ws = toDateString(row.week_start);
     
     if (viewMode === 'weekly') return ws === selectedPeriod;
     if (viewMode === 'monthly') return (row.month || getMonthFromWeekStart(ws)) === selectedPeriod;
@@ -470,17 +494,15 @@ export function getRepDailyActivity(
     if (segment === 'smilegen' && prod !== 'smilegen') return false;
     
     // Period filter
-    const ws = typeof row.week_start === 'string' 
-      ? row.week_start.split('T')[0] 
-      : String(row.week_start);
+    const ws = toDateString(row.week_start);
     
     if (viewMode === 'weekly') return ws === selectedPeriod;
     if (viewMode === 'monthly') return (row.month || getMonthFromWeekStart(ws)) === selectedPeriod;
     if (viewMode === 'quarterly') return row.quarter === selectedPeriod;
     return false;
   }).map(row => ({
-    date: typeof row.date === 'string' ? row.date.split('T')[0] : String(row.date),
-    weekStart: typeof row.week_start === 'string' ? row.week_start.split('T')[0] : String(row.week_start),
+    date: toDateString(row.date),
+    weekStart: toDateString(row.week_start),
     repName: row.rep_name || '',
     product: row.product || '',
     demosBooked: row.demos_booked || 0,
@@ -504,11 +526,8 @@ export function buildTrends(
   segment: Segment
 ): { marketing: Record<string, TrendPoint[]>; sales: Record<string, TrendPoint[]> } {
   // Get unique weeks sorted desc
-  const weekValues = marketingRows.map(r => {
-    const ws = typeof r.week_start === 'string' ? r.week_start.split('T')[0] : String(r.week_start);
-    return ws;
-  });
-  const weeks = Array.from(new Set(weekValues)).sort((a, b) => a.localeCompare(b)).slice(-6); // Last 6 weeks
+  const weekValues = marketingRows.map(r => toDateString(r.week_start));
+  const weeks = Array.from(new Set(weekValues)).filter(Boolean).sort((a, b) => a.localeCompare(b)).slice(-6); // Last 6 weeks
 
   const marketing: Record<string, TrendPoint[]> = {
     adSpend: [],
