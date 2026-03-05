@@ -7,6 +7,7 @@ import {
   Calendar, CalendarDays, CalendarRange,
   ArrowLeftRight, ChevronDown,
 } from 'lucide-react';
+import Image from 'next/image';
 
 const NAV_ITEMS: { id: DashboardView; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -69,10 +70,14 @@ export function Header({
             </div>
 
             {/* Logo */}
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-accent-400 to-accent-600 flex items-center justify-center shadow-lg shadow-accent-500/20">
-                <span className="text-white font-bold text-lg" style={{ fontFamily: 'var(--font-display)' }}>BB</span>
-              </div>
+            <div className="flex items-center">
+              <Image
+                src="/logo.png"
+                alt="BiteBot Logo"
+                width={56}
+                height={56}
+                className="object-contain"
+              />
             </div>
           </div>
         </div>
@@ -130,9 +135,9 @@ export function Header({
         </div>
       </div>
 
-      {/* Controls bar */}
+      {/* Controls bar - centered */}
       <div className="bg-dark-950/80 backdrop-blur-xl border-b border-slate-800/40">
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-2.5 flex items-center gap-4 flex-wrap">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-2.5 flex items-center justify-center gap-4 flex-wrap">
           {/* View mode toggle */}
           <div className="flex items-center gap-1 bg-slate-900/60 rounded-lg p-0.5">
             {VIEW_MODES.map((mode) => {
@@ -187,19 +192,6 @@ export function Header({
             <ArrowLeftRight className="w-3.5 h-3.5" />
             Compare
           </button>
-
-          {/* Mobile nav */}
-          <div className="md:hidden ml-auto">
-            <select
-              value={activeView}
-              onChange={(e) => onViewChange(e.target.value as DashboardView)}
-              className="appearance-none px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-900/60 border border-slate-700/50 text-white"
-            >
-              {NAV_ITEMS.map((item) => (
-                <option key={item.id} value={item.id}>{item.label}</option>
-              ))}
-            </select>
-          </div>
         </div>
       </div>
     </header>
