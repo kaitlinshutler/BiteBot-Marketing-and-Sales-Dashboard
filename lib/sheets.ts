@@ -54,15 +54,31 @@ export function parseSheetRows<T>(
     if (key) headerIndices[key] = i;
   });
 
+  // Fields that should stay as strings (dates, IDs, etc.)
+  const stringFields = new Set([
+    'week_start', 'week_end', 'month', 'quarter', 'date', 'date_added',
+    'email', 'name', 'campaign', 'segment', 'campaign_type', 'campaigns',
+    'source', 'attribution_type', 'rep_name', 'product', 'attribution_source',
+    'setting_key', 'setting_value', 'description', 'contact_source',
+    'first_click_url', 'medium', 'ad_content', 'placement'
+  ]);
+
   return rows.slice(1).map((row) => {
     const obj: Partial<T> = {};
     for (const [sheetCol, objKey] of Object.entries(headerMap)) {
       const idx = headerIndices[sheetCol.toLowerCase()];
       if (idx !== undefined) {
         const val = row[idx];
-        // Try to parse numbers
-        const num = parseFloat(val);
-        (obj as Record<string, unknown>)[objKey as string] = isNaN(num) ? val || '' : num;
+        const colLower = sheetCol.toLowerCase();
+        
+        // Keep string fields as strings
+        if (stringFields.has(colLower)) {
+          (obj as Record<string, unknown>)[objKey as string] = val || '';
+        } else {
+          // Try to parse as number for numeric fields
+          const num = parseFloat(val);
+          (obj as Record<string, unknown>)[objKey as string] = isNaN(num) ? val || '' : num;
+        }
       }
     }
     return obj as T;
