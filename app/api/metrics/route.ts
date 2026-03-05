@@ -56,7 +56,7 @@ async function fetchAllSheets() {
     getSheetData('Attribution_Weekly'),
     getSheetData('Sales_Weekly'),
     getSheetData('PaidSocial_Leads'),
-    getSheetData('SalesRep_Daily'),
+    getSheetData('Sales_Rep_Daily'),
   ]);
 
   // Parse into typed objects
