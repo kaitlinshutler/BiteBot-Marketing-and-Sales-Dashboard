@@ -76,8 +76,13 @@ export function parseSheetRows<T>(
           (obj as Record<string, unknown>)[objKey as string] = val || '';
         } else {
           // Try to parse as number for numeric fields
-          const num = parseFloat(val);
-          (obj as Record<string, unknown>)[objKey as string] = isNaN(num) ? val || '' : num;
+          // Handle empty strings, undefined, null
+          if (val === undefined || val === null || val === '') {
+            (obj as Record<string, unknown>)[objKey as string] = 0;
+          } else {
+            const num = parseFloat(String(val).replace(/[,$]/g, ''));
+            (obj as Record<string, unknown>)[objKey as string] = isNaN(num) ? 0 : num;
+          }
         }
       }
     }
