@@ -22,38 +22,25 @@ import type {
 } from '@/types';
 
 interface ApiResponse {
-  success: boolean;
-  data: {
-    marketing: MarketingMetrics;
-    sales: SalesMetrics;
-    attribution: AttributionRow[];
-    reps: SalesRepMetrics[];
-    repDaily: SalesRepDaily[];
-    periods: {
-      weeks: PeriodOption[];
-      months: PeriodOption[];
-      quarters: PeriodOption[];
-    };
-    trends: {
-      marketing: Record<string, TrendPoint[]>;
-      sales: Record<string, TrendPoint[]>;
-    };
-    comparison: {
-      marketing: MarketingMetrics;
-      sales: SalesMetrics;
-    } | null;
-    config: {
-      commissionRate: number;
-      repNames: string[];
-    };
-    meta: {
-      segment: Segment;
-      viewMode: ViewMode;
-      selectedPeriod: string;
-      comparePeriod: string | null;
-      timestamp: string;
-    };
+  marketing: MarketingMetrics;
+  sales: SalesMetrics;
+  attribution: AttributionRow[];
+  reps: SalesRepMetrics[];
+  repDaily: SalesRepDaily[];
+  periods: {
+    days: PeriodOption[];
+    weeks: PeriodOption[];
+    months: PeriodOption[];
+    quarters: PeriodOption[];
   };
+  trends: {
+    marketing: Record<string, TrendPoint[]>;
+    sales: Record<string, TrendPoint[]>;
+  };
+  prevMarketing: MarketingMetrics | null;
+  prevSales: SalesMetrics | null;
+  selectedPeriod: string;
+  lastUpdated: string;
   error?: string;
 }
 
@@ -67,7 +54,7 @@ export default function DashboardPage() {
   const [comparePeriod, setComparePeriod] = useState<string>('');
 
   // Data State
-  const [data, setData] = useState<ApiResponse['data'] | null>(null);
+  const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,27 +71,31 @@ export default function DashboardPage() {
       const res = await fetch(`/api/metrics?${params}`);
       const json: ApiResponse = await res.json();
 
-      if (!json.success) {
-        throw new Error(json.error || 'Failed to fetch data');
+      if (json.error) {
+        throw new Error(json.error);
       }
 
-      setData(json.data);
+      setData(json);
       
       // Set default period if not set
-      if (!selectedPeriod && json.data.periods) {
-        const defaultPeriod = viewMode === 'weekly' 
-          ? json.data.periods.weeks[0]?.value
-          : viewMode === 'monthly'
-            ? json.data.periods.months[0]?.value
-            : json.data.periods.quarters[0]?.value;
+      if (!selectedPeriod && json.periods) {
+        const defaultPeriod = viewMode === 'daily'
+          ? json.periods.days?.[0]?.value
+          : viewMode === 'weekly' 
+            ? json.periods.weeks?.[0]?.value
+            : viewMode === 'monthly'
+              ? json.periods.months?.[0]?.value
+              : json.periods.quarters?.[0]?.value;
         if (defaultPeriod) {
           setSelectedPeriod(defaultPeriod);
           // Set compare period to second option
-          const compareDefault = viewMode === 'weekly'
-            ? json.data.periods.weeks[1]?.value
-            : viewMode === 'monthly'
-              ? json.data.periods.months[1]?.value
-              : json.data.periods.quarters[1]?.value;
+          const compareDefault = viewMode === 'daily'
+            ? json.periods.days?.[1]?.value
+            : viewMode === 'weekly'
+              ? json.periods.weeks?.[1]?.value
+              : viewMode === 'monthly'
+                ? json.periods.months?.[1]?.value
+                : json.periods.quarters?.[1]?.value;
           if (compareDefault) setComparePeriod(compareDefault);
         }
       }
@@ -130,9 +121,11 @@ export default function DashboardPage() {
   const periodOptions = useMemo(() => {
     if (!data?.periods) return [];
     switch (viewMode) {
-      case 'weekly': return data.periods.weeks;
-      case 'monthly': return data.periods.months;
-      case 'quarterly': return data.periods.quarters;
+      case 'daily': return data.periods.days || [];
+      case 'weekly': return data.periods.weeks || [];
+      case 'monthly': return data.periods.months || [];
+      case 'quarterly': return data.periods.quarters || [];
+      default: return [];
     }
   }, [data?.periods, viewMode]);
 
@@ -149,12 +142,12 @@ export default function DashboardPage() {
 
   // Build comparison data
   const comparisonData: ComparisonData[] = useMemo(() => {
-    if (!data || !data.comparison) return [];
+    if (!data || !data.prevMarketing || !data.prevSales) return [];
 
     const mkt = data.marketing;
-    const mktPrev = data.comparison.marketing;
+    const mktPrev = data.prevMarketing;
     const sales = data.sales;
-    const salesPrev = data.comparison.sales;
+    const salesPrev = data.prevSales;
 
     function comp(
       id: string,
@@ -263,7 +256,7 @@ export default function DashboardPage() {
         )}
 
         {/* Comparison panel */}
-        {compareMode && data?.comparison && (
+        {compareMode && data?.prevMarketing && (
           <ComparisonPanel
             isOpen={compareMode}
             periodALabel={currentPeriodLabel}
@@ -283,8 +276,8 @@ export default function DashboardPage() {
                 marketing={data.marketing}
                 sales={data.sales}
                 trends={data.trends}
-                prevMarketing={data.comparison?.marketing}
-                prevSales={data.comparison?.sales}
+                prevMarketing={data.prevMarketing ?? undefined}
+                prevSales={data.prevSales ?? undefined}
               />
             )}
             {activeView === 'marketing' && (
@@ -292,14 +285,14 @@ export default function DashboardPage() {
                 marketing={data.marketing}
                 attribution={data.attribution}
                 trends={data.trends}
-                prevMarketing={data.comparison?.marketing}
+                prevMarketing={data.prevMarketing ?? undefined}
               />
             )}
             {activeView === 'sales' && (
               <SalesView
                 sales={data.sales}
                 trends={data.trends}
-                prevSales={data.comparison?.sales}
+                prevSales={data.prevSales ?? undefined}
                 segment={segment}
               />
             )}
@@ -308,7 +301,6 @@ export default function DashboardPage() {
                 reps={data.reps}
                 repDaily={data.repDaily}
                 segment={segment}
-                config={data.config}
               />
             )}
           </>
@@ -319,8 +311,8 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between text-xs text-slate-600">
             <p>BiteBot Marketing & Sales Dashboard</p>
             <p className="font-mono">
-              {data?.meta.timestamp 
-                ? `Last updated: ${new Date(data.meta.timestamp).toLocaleTimeString()}`
+              {data?.lastUpdated 
+                ? `Last updated: ${new Date(data.lastUpdated).toLocaleTimeString()}`
                 : ''}
             </p>
           </div>

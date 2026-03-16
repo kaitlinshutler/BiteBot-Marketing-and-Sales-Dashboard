@@ -9,22 +9,17 @@ interface RepsViewProps {
   reps: SalesRepMetrics[];
   repDaily: SalesRepDaily[];
   segment: Segment;
-  config: {
-    commissionRate: number;
-    repNames: string[];
-  };
 }
 
-export function RepsView({ reps, repDaily, segment, config }: RepsViewProps) {
+export function RepsView({ reps, repDaily, segment }: RepsViewProps) {
   const [selectedRep, setSelectedRep] = useState<string>('all');
 
-  // Get rep names from data or config
+  // Get rep names from data
   const repNames = useMemo(() => {
     const fromData = reps.map(r => r.repName).filter(Boolean);
-    const allNames = fromData.concat(config.repNames);
-    const unique = Array.from(new Set(allNames)).filter(n => n && n !== '[Rep 2 Name]');
-    return unique;
-  }, [reps, config.repNames]);
+    const unique = Array.from(new Set(fromData)).filter(n => n && n !== 'Unknown' && n !== 'Unassigned');
+    return unique.sort();
+  }, [reps]);
 
   // Get selected rep's data
   const selectedRepData = useMemo(() => {
@@ -33,6 +28,7 @@ export function RepsView({ reps, repDaily, segment, config }: RepsViewProps) {
       return reps.reduce(
         (acc, r) => ({
           repName: 'All Reps',
+          callsMade: acc.callsMade + (r.callsMade || 0),
           demosBooked: acc.demosBooked + r.demosBooked,
           demosShowed: acc.demosShowed + r.demosShowed,
           demosNoShowed: acc.demosNoShowed + r.demosNoShowed,
@@ -41,25 +37,10 @@ export function RepsView({ reps, repDaily, segment, config }: RepsViewProps) {
           commissionEarned: acc.commissionEarned + r.commissionEarned,
           showRate: 0,
           closeRate: 0,
-          bitebot: {
-            demosBooked: acc.bitebot.demosBooked + r.bitebot.demosBooked,
-            demosShowed: acc.bitebot.demosShowed + r.bitebot.demosShowed,
-            demosNoShowed: acc.bitebot.demosNoShowed + r.bitebot.demosNoShowed,
-            salesClosed: acc.bitebot.salesClosed + r.bitebot.salesClosed,
-            cashCollected: acc.bitebot.cashCollected + r.bitebot.cashCollected,
-            commissionEarned: acc.bitebot.commissionEarned + r.bitebot.commissionEarned,
-          },
-          smilegen: {
-            demosBooked: acc.smilegen.demosBooked + r.smilegen.demosBooked,
-            demosShowed: acc.smilegen.demosShowed + r.smilegen.demosShowed,
-            demosNoShowed: acc.smilegen.demosNoShowed + r.smilegen.demosNoShowed,
-            salesClosed: acc.smilegen.salesClosed + r.smilegen.salesClosed,
-            cashCollected: acc.smilegen.cashCollected + r.smilegen.cashCollected,
-            commissionEarned: acc.smilegen.commissionEarned + r.smilegen.commissionEarned,
-          },
         }),
         {
           repName: 'All Reps',
+          callsMade: 0,
           demosBooked: 0,
           demosShowed: 0,
           demosNoShowed: 0,
@@ -68,8 +49,6 @@ export function RepsView({ reps, repDaily, segment, config }: RepsViewProps) {
           commissionEarned: 0,
           showRate: 0,
           closeRate: 0,
-          bitebot: { demosBooked: 0, demosShowed: 0, demosNoShowed: 0, salesClosed: 0, cashCollected: 0, commissionEarned: 0 },
-          smilegen: { demosBooked: 0, demosShowed: 0, demosNoShowed: 0, salesClosed: 0, cashCollected: 0, commissionEarned: 0 },
         }
       );
     }
@@ -79,61 +58,32 @@ export function RepsView({ reps, repDaily, segment, config }: RepsViewProps) {
   // Calculate rates for aggregated data
   const repKpis: KPIData[] = selectedRepData
     ? [
+        { id: 'callsMade', label: 'Calls Made', value: selectedRepData.callsMade, format: 'integer', trendDirection: 'up' },
         { id: 'demosBooked', label: 'Demos Booked', value: selectedRepData.demosBooked, format: 'integer', trendDirection: 'up' },
         { id: 'demosShowed', label: 'Demos Showed', value: selectedRepData.demosShowed, format: 'integer', trendDirection: 'up' },
-        { id: 'demosNoShowed', label: 'Demos No-Showed', value: selectedRepData.demosNoShowed, format: 'integer', trendDirection: 'down' },
         { id: 'salesClosed', label: 'Sales Closed', value: selectedRepData.salesClosed, format: 'integer', trendDirection: 'up' },
         { id: 'cashCollected', label: 'Cash Collected', value: selectedRepData.cashCollected, format: 'currency_whole', trendDirection: 'up' },
-        { id: 'commission', label: `Commission (${config.commissionRate * 100}%)`, value: selectedRepData.commissionEarned, format: 'currency', trendDirection: 'up' },
+        { id: 'commission', label: 'Commission', value: selectedRepData.commissionEarned, format: 'currency', trendDirection: 'up' },
       ]
     : [];
 
-  // Product breakdown table
-  const productColumns = [
+  // Performance summary table for individual rep
+  const performanceColumns = [
     { key: 'metric', label: 'Metric' },
-    { key: 'bitebot', label: 'BiteBot', align: 'right' as const },
-    { key: 'smilegen', label: 'SmileGen', align: 'right' as const },
-    { key: 'total', label: 'Total', align: 'right' as const },
+    { key: 'value', label: 'Value', align: 'right' as const },
   ];
 
-  const productData = selectedRepData
+  const performanceData = selectedRepData
     ? [
-        {
-          metric: 'Demos Booked',
-          bitebot: selectedRepData.bitebot.demosBooked,
-          smilegen: selectedRepData.smilegen.demosBooked,
-          total: selectedRepData.demosBooked,
-        },
-        {
-          metric: 'Demos Showed',
-          bitebot: selectedRepData.bitebot.demosShowed,
-          smilegen: selectedRepData.smilegen.demosShowed,
-          total: selectedRepData.demosShowed,
-        },
-        {
-          metric: 'Demos No-Showed',
-          bitebot: selectedRepData.bitebot.demosNoShowed,
-          smilegen: selectedRepData.smilegen.demosNoShowed,
-          total: selectedRepData.demosNoShowed,
-        },
-        {
-          metric: 'Sales Closed',
-          bitebot: selectedRepData.bitebot.salesClosed,
-          smilegen: selectedRepData.smilegen.salesClosed,
-          total: selectedRepData.salesClosed,
-        },
-        {
-          metric: 'Cash Collected',
-          bitebot: formatValue(selectedRepData.bitebot.cashCollected, 'currency_whole'),
-          smilegen: formatValue(selectedRepData.smilegen.cashCollected, 'currency_whole'),
-          total: formatValue(selectedRepData.cashCollected, 'currency_whole'),
-        },
-        {
-          metric: `Commission (${config.commissionRate * 100}%)`,
-          bitebot: formatValue(selectedRepData.bitebot.commissionEarned, 'currency'),
-          smilegen: formatValue(selectedRepData.smilegen.commissionEarned, 'currency'),
-          total: formatValue(selectedRepData.commissionEarned, 'currency'),
-        },
+        { metric: 'Calls Made', value: selectedRepData.callsMade },
+        { metric: 'Demos Booked', value: selectedRepData.demosBooked },
+        { metric: 'Demos Showed', value: selectedRepData.demosShowed },
+        { metric: 'Demos No-Showed', value: selectedRepData.demosNoShowed },
+        { metric: 'Show Rate', value: formatValue(selectedRepData.demosBooked > 0 ? (selectedRepData.demosShowed / selectedRepData.demosBooked) * 100 : 0, 'percent') },
+        { metric: 'Sales Closed', value: selectedRepData.salesClosed },
+        { metric: 'Close Rate', value: formatValue(selectedRepData.demosShowed > 0 ? (selectedRepData.salesClosed / selectedRepData.demosShowed) * 100 : 0, 'percent') },
+        { metric: 'Cash Collected', value: formatValue(selectedRepData.cashCollected, 'currency_whole') },
+        { metric: 'Commission', value: formatValue(selectedRepData.commissionEarned, 'currency') },
       ]
     : [];
 
@@ -141,16 +91,17 @@ export function RepsView({ reps, repDaily, segment, config }: RepsViewProps) {
   const leaderboardColumns = [
     { key: 'rank', label: '#', width: '40px' },
     { key: 'repName', label: 'Rep Name', sortable: true },
+    { key: 'callsMade', label: 'Calls', align: 'right' as const, sortable: true },
     { key: 'demosBooked', label: 'Booked', align: 'right' as const, sortable: true },
     { key: 'demosShowed', label: 'Showed', align: 'right' as const, sortable: true },
     { key: 'showRate', label: 'Show %', align: 'right' as const, format: 'percent', sortable: true },
     { key: 'salesClosed', label: 'Closes', align: 'right' as const, sortable: true },
     { key: 'cashCollected', label: 'Cash', align: 'right' as const, format: 'currency_whole', sortable: true },
-    { key: 'commissionEarned', label: 'Comm.', align: 'right' as const, format: 'currency', sortable: true },
     { key: 'closeRate', label: 'Close %', align: 'right' as const, format: 'percent', sortable: true },
   ];
 
   const leaderboardData = reps
+    .filter(r => r.repName !== 'Unassigned' && r.repName !== 'Unknown')
     .sort((a, b) => b.cashCollected - a.cashCollected)
     .map((r, i) => ({
       rank: i === 0 ? '🏆' : String(i + 1),
@@ -159,11 +110,11 @@ export function RepsView({ reps, repDaily, segment, config }: RepsViewProps) {
       closeRate: r.demosShowed > 0 ? (r.salesClosed / r.demosShowed) * 100 : 0,
     }));
 
-  // Daily activity columns
+  // Daily activity columns (no product column anymore)
   const dailyColumns = [
     { key: 'date', label: 'Date', sortable: true },
     { key: 'repName', label: 'Rep' },
-    { key: 'product', label: 'Product' },
+    { key: 'callsMade', label: 'Calls', align: 'right' as const },
     { key: 'demosBooked', label: 'Booked', align: 'right' as const },
     { key: 'demosShowed', label: 'Showed', align: 'right' as const },
     { key: 'demosNoShowed', label: 'No-Show', align: 'right' as const },
@@ -172,9 +123,9 @@ export function RepsView({ reps, repDaily, segment, config }: RepsViewProps) {
   ];
 
   // Filter daily activity by selected rep
-  const filteredDailyData = repDaily.filter(
-    d => selectedRep === 'all' || d.repName === selectedRep
-  );
+  const filteredDailyData = repDaily
+    .filter(d => selectedRep === 'all' || d.repName === selectedRep)
+    .filter(d => d.repName !== 'Unassigned' && d.repName !== 'Unknown');
 
   return (
     <div className="space-y-10">
@@ -202,13 +153,13 @@ export function RepsView({ reps, repDaily, segment, config }: RepsViewProps) {
         )}
       </Section>
 
-      {/* Product Breakdown (Individual Rep) */}
+      {/* Performance Summary (Individual Rep) */}
       {selectedRep !== 'all' && selectedRepData && (
-        <Section title="Product Breakdown" subtitle="Performance by product">
+        <Section title="Performance Summary" subtitle="Detailed metrics">
           <DataTable
-            columns={productColumns}
-            data={productData as Record<string, unknown>[]}
-            emptyMessage="No product breakdown data"
+            columns={performanceColumns}
+            data={performanceData as Record<string, unknown>[]}
+            emptyMessage="No performance data"
           />
         </Section>
       )}

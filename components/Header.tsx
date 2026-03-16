@@ -4,7 +4,7 @@ import { cn, SEGMENT_LABELS } from '@/lib/utils';
 import type { DashboardView, Segment, ViewMode, PeriodOption } from '@/types';
 import {
   LayoutDashboard, Megaphone, DollarSign, Users,
-  Calendar, CalendarDays, CalendarRange,
+  Calendar, CalendarDays, CalendarRange, CalendarCheck,
   ArrowLeftRight, ChevronDown,
 } from 'lucide-react';
 import Image from 'next/image';
@@ -19,6 +19,7 @@ const NAV_ITEMS: { id: DashboardView; label: string; icon: typeof LayoutDashboar
 const SEGMENTS: Segment[] = ['company', 'bitebot', 'smilegen'];
 
 const VIEW_MODES: { id: ViewMode; label: string; icon: typeof Calendar }[] = [
+  { id: 'daily', label: 'Daily', icon: CalendarCheck },
   { id: 'weekly', label: 'Weekly', icon: Calendar },
   { id: 'monthly', label: 'Monthly', icon: CalendarDays },
   { id: 'quarterly', label: 'Quarterly', icon: CalendarRange },

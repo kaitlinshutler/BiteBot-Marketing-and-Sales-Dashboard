@@ -3,7 +3,7 @@
 // ============================================================================
 
 export type Segment = 'company' | 'bitebot' | 'smilegen';
-export type ViewMode = 'weekly' | 'monthly' | 'quarterly';
+export type ViewMode = 'daily' | 'weekly' | 'monthly' | 'quarterly';
 export type DashboardView = 'overview' | 'marketing' | 'sales' | 'reps';
 
 export interface PeriodOption {
@@ -59,6 +59,7 @@ export interface AttributionRow {
 
 export interface SalesRepMetrics {
   repName: string;
+  callsMade: number;
   demosBooked: number;
   demosShowed: number;
   demosNoShowed: number;
@@ -67,29 +68,12 @@ export interface SalesRepMetrics {
   commissionEarned: number;
   showRate: number;
   closeRate: number;
-  bitebot: {
-    demosBooked: number;
-    demosShowed: number;
-    demosNoShowed: number;
-    salesClosed: number;
-    cashCollected: number;
-    commissionEarned: number;
-  };
-  smilegen: {
-    demosBooked: number;
-    demosShowed: number;
-    demosNoShowed: number;
-    salesClosed: number;
-    cashCollected: number;
-    commissionEarned: number;
-  };
 }
 
 export interface SalesRepDaily {
   date: string;
-  weekStart: string;
   repName: string;
-  product: string;
+  callsMade: number;
   demosBooked: number;
   demosShowed: number;
   demosNoShowed: number;
@@ -129,6 +113,7 @@ export interface DashboardData {
   reps: SalesRepMetrics[];
   repDaily: SalesRepDaily[];
   periods: {
+    days: PeriodOption[];
     weeks: PeriodOption[];
     months: PeriodOption[];
     quarters: PeriodOption[];
@@ -139,7 +124,97 @@ export interface DashboardData {
   };
 }
 
-// Raw sheet row types
+// ============================================================================
+// Raw sheet row types - DAILY data (primary source)
+// ============================================================================
+
+export interface MarketingDailyRow {
+  date: string;
+  month: string;
+  quarter: string;
+  segment: string;
+  campaigns: string;
+  spend: number;
+  impressions: number;
+  cpm: number;
+  link_clicks: number;
+  cpc: number;
+  fb_leads: number;
+  cpl: number;
+  demos_booked: number;
+  demos_showed: number;
+  show_rate: number;
+  closes: number;
+  cost_per_close: number;
+}
+
+export interface SalesDailyRow {
+  date: string;
+  month: string;
+  quarter: string;
+  segment: string;
+  total_closes: number;
+  from_demo: number;
+  from_ads: number;
+  from_email: number;
+  from_affiliate: number;
+  from_referral: number;
+  from_organic: number;
+  from_direct: number;
+  from_other: number;
+}
+
+export interface AttributionDailyRow {
+  date: string;
+  month: string;
+  quarter: string;
+  segment: string;
+  attribution_type: string;
+  source: string;
+  count: number;
+  percentage: number;
+}
+
+export interface SalesRepDailyRow {
+  date: string;
+  month: string;
+  quarter: string;
+  rep_name: string;
+  calls_made: number;
+  demos_booked: number;
+  demos_showed: number;
+  demos_no_showed: number;
+  sales_closed: number;
+  close_rate: number;
+  cash_collected: number;
+  commission_earned: number;
+  attribution_source: string;
+}
+
+export interface PaidSocialLeadsRow {
+  date_added: string;
+  email: string;
+  name: string;
+  contact_source: string;
+  first_click_url: string;
+  attribution_source: string;
+  campaign: string;
+  medium: string;
+  ad_content: string;
+  placement: string;
+  segment: string;
+}
+
+export interface ConfigRow {
+  setting_key: string;
+  setting_value: string;
+  description?: string;
+}
+
+// ============================================================================
+// Legacy weekly row types (kept for comparison features)
+// ============================================================================
+
 export interface MarketingWeeklyRow {
   week_start: string;
   week_end: string;
@@ -170,6 +245,7 @@ export interface SalesWeeklyRow {
   quarter: string;
   segment: string;
   total_closes: number;
+  cash_collected: number;
   from_demo: number;
   from_ads: number;
   from_email: number;
@@ -187,40 +263,4 @@ export interface AttributionWeeklyRow {
   source: string;
   count: number;
   percentage: number;
-}
-
-export interface PaidSocialLeadsRow {
-  date_added: string;
-  email: string;
-  name: string;
-  contact_source: string;
-  first_click_url: string;
-  attribution_source: string;
-  campaign: string;
-  medium: string;
-  ad_content: string;
-  placement: string;
-  segment: string;
-}
-
-export interface SalesRepDailyRow {
-  date: string;
-  week_start: string;
-  month: string;
-  quarter: string;
-  rep_name: string;
-  product: string;
-  demos_booked: number;
-  demos_showed: number;
-  demos_no_showed: number;
-  sales_closed: number;
-  cash_collected: number;
-  commission_earned: number;
-  attribution_source: string;
-}
-
-export interface ConfigRow {
-  setting_key: string;
-  setting_value: string;
-  description?: string;
 }

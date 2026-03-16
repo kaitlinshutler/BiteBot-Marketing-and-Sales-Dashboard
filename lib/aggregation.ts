@@ -1,5 +1,5 @@
 // ============================================================================
-// Data Aggregation & Transformation
+// Data Aggregation & Transformation - Daily-based
 // ============================================================================
 
 import type {
@@ -12,91 +12,71 @@ import type {
   SalesRepDaily,
   TrendPoint,
   PeriodOption,
-  MarketingWeeklyRow,
-  SalesWeeklyRow,
-  AttributionWeeklyRow,
-  PaidSocialLeadsRow,
+  MarketingDailyRow,
+  SalesDailyRow,
+  AttributionDailyRow,
   SalesRepDailyRow,
+  PaidSocialLeadsRow,
 } from '@/types';
 
 // ============================================================================
 // Segment filtering helpers
 // ============================================================================
 
-// Check if a campaign_type/segment should be included in a given segment filter
 export function includeInSegment(rowSegment: string, filterSegment: Segment): boolean {
   const seg = rowSegment?.toLowerCase().trim() || '';
   
   if (filterSegment === 'company') {
-    // Company includes everything
-    return true;
+    return true; // Company includes everything
   }
   
   if (filterSegment === 'bitebot') {
-    // Only exact BiteBot match
     return seg === 'bitebot';
   }
   
   if (filterSegment === 'smilegen') {
-    // Only exact SmileGen match
     return seg === 'smilegen';
   }
   
   return false;
 }
 
-// Normalize segment names from various sheet formats
 export function normalizeSegment(raw: string): string {
   const s = raw?.toLowerCase().trim() || '';
   if (s === 'bitebot') return 'bitebot';
   if (s === 'smilegen') return 'smilegen';
-  if (s.includes('bitebot') && s.includes('smilegen')) return 'both'; // company only
-  if (s === 'retargeting') return 'retargeting'; // company only
   return 'other';
 }
 
 // ============================================================================
-// Period helpers
+// Date helpers
 // ============================================================================
 
-// Safely convert any date value to YYYY-MM-DD string
 export function toDateString(value: unknown): string {
   if (!value) return '';
   
-  // Already a string
   if (typeof value === 'string') {
-    // Handle ISO format
     if (value.includes('T')) return value.split('T')[0];
-    // Already YYYY-MM-DD
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-    // Try to parse
     const d = new Date(value);
     if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
     return value;
   }
   
-  // Number (Google Sheets serial date)
   if (typeof value === 'number') {
-    // Google Sheets epoch is Dec 30, 1899
+    // Google Sheets serial date
     const d = new Date((value - 25569) * 86400 * 1000);
     return d.toISOString().split('T')[0];
   }
   
-  // Date object
   if (value instanceof Date) {
     return value.toISOString().split('T')[0];
-  }
-  
-  // Object with toISOString (Date-like)
-  if (typeof value === 'object' && value !== null && 'toISOString' in value) {
-    return (value as Date).toISOString().split('T')[0];
   }
   
   return String(value);
 }
 
 export function getWeekStart(dateStr: string): string {
-  // Handle various date formats and return Monday of that week as YYYY-MM-DD
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return '';
   const day = d.getDay();
@@ -105,67 +85,118 @@ export function getWeekStart(dateStr: string): string {
   return monday.toISOString().split('T')[0];
 }
 
+export function getMonthFromDate(dateStr: string): string {
+  if (!dateStr || dateStr.length < 7) return '';
+  return dateStr.substring(0, 7); // "YYYY-MM"
+}
+
+export function getQuarterFromDate(dateStr: string): string {
+  if (!dateStr || dateStr.length < 7) return '';
+  const month = parseInt(dateStr.substring(5, 7));
+  const year = dateStr.substring(0, 4);
+  const q = Math.ceil(month / 3);
+  return `Q${q} ${year}`;
+}
+
+export function formatDateLabel(dateStr: string): string {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 export function formatWeekLabel(weekStart: string): string {
+  if (!weekStart) return '';
   const d = new Date(weekStart);
+  if (isNaN(d.getTime())) return weekStart;
   return `Week of ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
 }
 
-export function formatMonthLabel(month: string): string {
-  // month format: "YYYY-MM"
-  const [year, m] = month.split('-');
+export function formatMonthLabel(month: string | unknown): string {
+  if (!month) return '';
+  const monthStr = String(month);
+  if (!monthStr.includes('-')) return monthStr;
+  const [year, m] = monthStr.split('-');
   const d = new Date(parseInt(year), parseInt(m) - 1, 1);
+  if (isNaN(d.getTime())) return monthStr;
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
 
-export function getMonthFromWeekStart(weekStart: string): string {
-  // Week belongs to month where Monday falls
-  return weekStart.substring(0, 7); // "YYYY-MM"
-}
+// ============================================================================
+// Period matching
+// ============================================================================
 
-export function getQuarterFromMonth(month: string): string {
-  const m = parseInt(month.split('-')[1]);
-  const year = month.split('-')[0];
-  const q = Math.ceil(m / 3);
-  return `Q${q} ${year}`;
+function matchesPeriod(
+  date: string,
+  month: string,
+  quarter: string,
+  viewMode: ViewMode,
+  selectedPeriod: string
+): boolean {
+  const dateStr = toDateString(date);
+  
+  switch (viewMode) {
+    case 'daily':
+      return dateStr === selectedPeriod;
+    case 'weekly':
+      return getWeekStart(dateStr) === selectedPeriod;
+    case 'monthly':
+      return (month || getMonthFromDate(dateStr)) === selectedPeriod;
+    case 'quarterly':
+      return (quarter || getQuarterFromDate(dateStr)) === selectedPeriod;
+    default:
+      return false;
+  }
 }
 
 // ============================================================================
 // Extract unique periods from data
 // ============================================================================
 
-export function extractPeriods(marketingRows: MarketingWeeklyRow[]): {
+export function extractPeriods(marketingRows: MarketingDailyRow[]): {
+  days: PeriodOption[];
   weeks: PeriodOption[];
   months: PeriodOption[];
   quarters: PeriodOption[];
 } {
+  const daySet = new Set<string>();
   const weekSet = new Set<string>();
   const monthSet = new Set<string>();
   const quarterSet = new Set<string>();
 
   for (const row of marketingRows) {
-    if (row.week_start) {
-      const ws = toDateString(row.week_start);
-      if (ws) {
-        weekSet.add(ws);
-        monthSet.add(row.month || getMonthFromWeekStart(ws));
-        quarterSet.add(row.quarter || getQuarterFromMonth(row.month || getMonthFromWeekStart(ws)));
+    if (row.date) {
+      const dateStr = toDateString(row.date);
+      if (dateStr) {
+        daySet.add(dateStr);
+        weekSet.add(getWeekStart(dateStr));
+        monthSet.add(row.month || getMonthFromDate(dateStr));
+        quarterSet.add(row.quarter || getQuarterFromDate(dateStr));
       }
     }
   }
 
+  const days = Array.from(daySet)
+    .filter(Boolean)
+    .sort((a, b) => b.localeCompare(a))
+    .map(d => ({ value: d, label: formatDateLabel(d) }));
+
   const weeks = Array.from(weekSet)
+    .filter(Boolean)
     .sort((a, b) => b.localeCompare(a))
     .map(w => ({ value: w, label: formatWeekLabel(w) }));
 
   const months = Array.from(monthSet)
+    .filter(Boolean)
     .sort((a, b) => b.localeCompare(a))
     .map(m => ({ value: m, label: formatMonthLabel(m) }));
 
   const quarters = Array.from(quarterSet)
+    .filter(Boolean)
     .sort((a, b) => b.localeCompare(a))
     .map(q => ({ value: q, label: q }));
 
-  return { weeks, months, quarters };
+  return { days, weeks, months, quarters };
 }
 
 // ============================================================================
@@ -173,54 +204,38 @@ export function extractPeriods(marketingRows: MarketingWeeklyRow[]): {
 // ============================================================================
 
 export function aggregateMarketing(
-  rows: MarketingWeeklyRow[],
+  rows: MarketingDailyRow[],
   segment: Segment,
   viewMode: ViewMode,
   selectedPeriod: string
 ): MarketingMetrics {
-  // Filter rows by segment and period
   const filtered = rows.filter(row => {
-    // Segment filter
-    if (!includeInSegment(row.campaign_type, segment)) return false;
-    
-    // Period filter
-    const ws = toDateString(row.week_start);
-    
-    if (viewMode === 'weekly') {
-      return ws === selectedPeriod;
-    } else if (viewMode === 'monthly') {
-      const rowMonth = row.month || getMonthFromWeekStart(ws);
-      return rowMonth === selectedPeriod;
-    } else if (viewMode === 'quarterly') {
-      return row.quarter === selectedPeriod;
-    }
-    return false;
+    if (!includeInSegment(row.segment, segment)) return false;
+    return matchesPeriod(row.date, row.month, row.quarter, viewMode, selectedPeriod);
   });
 
-  // Sum flow metrics
   const totals = filtered.reduce((acc, row) => ({
     spend: acc.spend + (row.spend || 0),
     impressions: acc.impressions + (row.impressions || 0),
     linkClicks: acc.linkClicks + (row.link_clicks || 0),
-    fbAttributedLeads: acc.fbAttributedLeads + (row.fb_attributed_leads || 0),
+    fbLeads: acc.fbLeads + (row.fb_leads || 0),
     demosBooked: acc.demosBooked + (row.demos_booked || 0),
     demosShowed: acc.demosShowed + (row.demos_showed || 0),
     closes: acc.closes + (row.closes || 0),
   }), {
-    spend: 0, impressions: 0, linkClicks: 0, fbAttributedLeads: 0,
+    spend: 0, impressions: 0, linkClicks: 0, fbLeads: 0,
     demosBooked: 0, demosShowed: 0, closes: 0,
   });
 
-  // Calculate ratios from aggregated totals (never average)
   return {
     adSpend: totals.spend,
     impressions: totals.impressions,
     cpm: totals.impressions > 0 ? (totals.spend / totals.impressions) * 1000 : 0,
     linkClicks: totals.linkClicks,
     cpc: totals.linkClicks > 0 ? totals.spend / totals.linkClicks : 0,
-    totalLeads: 0, // Will be filled from PaidSocial_Leads
-    fbAttributedLeads: totals.fbAttributedLeads,
-    cpl: totals.fbAttributedLeads > 0 ? totals.spend / totals.fbAttributedLeads : 0,
+    totalLeads: 0, // Filled from PaidSocial_Leads
+    fbAttributedLeads: totals.fbLeads,
+    cpl: totals.fbLeads > 0 ? totals.spend / totals.fbLeads : 0,
     demosBooked: totals.demosBooked,
     demosShowed: totals.demosShowed,
     showRate: totals.demosBooked > 0 ? (totals.demosShowed / totals.demosBooked) * 100 : 0,
@@ -242,24 +257,12 @@ export function countTotalLeads(
   selectedPeriod: string
 ): number {
   return rows.filter(row => {
-    // Segment filter
     const rowSeg = normalizeSegment(row.segment);
     if (segment === 'bitebot' && rowSeg !== 'bitebot') return false;
     if (segment === 'smilegen' && rowSeg !== 'smilegen') return false;
-    // Company includes all
     
-    // Period filter
     const dateAdded = toDateString(row.date_added);
-    const ws = getWeekStart(dateAdded);
-    
-    if (viewMode === 'weekly') {
-      return ws === selectedPeriod;
-    } else if (viewMode === 'monthly') {
-      return getMonthFromWeekStart(ws) === selectedPeriod;
-    } else if (viewMode === 'quarterly') {
-      return getQuarterFromMonth(getMonthFromWeekStart(ws)) === selectedPeriod;
-    }
-    return false;
+    return matchesPeriod(dateAdded, getMonthFromDate(dateAdded), getQuarterFromDate(dateAdded), viewMode, selectedPeriod);
   }).length;
 }
 
@@ -268,26 +271,18 @@ export function countTotalLeads(
 // ============================================================================
 
 export function aggregateSales(
-  salesRows: SalesWeeklyRow[],
+  salesRows: SalesDailyRow[],
   repDailyRows: SalesRepDailyRow[],
   marketingDemosShowed: number,
   segment: Segment,
   viewMode: ViewMode,
   selectedPeriod: string
 ): SalesMetrics {
-  // Filter sales rows
   const filtered = salesRows.filter(row => {
     if (!includeInSegment(row.segment, segment)) return false;
-    
-    const ws = toDateString(row.week_start);
-    
-    if (viewMode === 'weekly') return ws === selectedPeriod;
-    if (viewMode === 'monthly') return (row.month || getMonthFromWeekStart(ws)) === selectedPeriod;
-    if (viewMode === 'quarterly') return row.quarter === selectedPeriod;
-    return false;
+    return matchesPeriod(row.date, row.month, row.quarter, viewMode, selectedPeriod);
   });
 
-  // Sum closes
   const closeTotals = filtered.reduce((acc, row) => ({
     totalCloses: acc.totalCloses + (row.total_closes || 0),
     fromDemos: acc.fromDemos + (row.from_demo || 0),
@@ -299,8 +294,8 @@ export function aggregateSales(
     totalCloses: 0, fromDemos: 0, fromAds: 0, fromEmails: 0, fromAffiliate: 0, fromOther: 0,
   });
 
-  // Get cash collected from SalesRep_Daily
-  const cashCollected = aggregateCashFromReps(repDailyRows, segment, viewMode, selectedPeriod);
+  // Get cash collected from Sales_Rep_Daily
+  const cashCollected = aggregateCashFromReps(repDailyRows, viewMode, selectedPeriod);
 
   return {
     totalCloses: closeTotals.totalCloses,
@@ -315,30 +310,13 @@ export function aggregateSales(
   };
 }
 
-// ============================================================================
-// Cash collected from SalesRep_Daily
-// ============================================================================
-
 export function aggregateCashFromReps(
   rows: SalesRepDailyRow[],
-  segment: Segment,
   viewMode: ViewMode,
   selectedPeriod: string
 ): number {
   return rows.filter(row => {
-    // Segment filter (product column)
-    const prod = row.product?.toLowerCase().trim() || '';
-    if (segment === 'bitebot' && prod !== 'bitebot') return false;
-    if (segment === 'smilegen' && prod !== 'smilegen') return false;
-    // Company includes both
-    
-    // Period filter
-    const ws = toDateString(row.week_start);
-    
-    if (viewMode === 'weekly') return ws === selectedPeriod;
-    if (viewMode === 'monthly') return (row.month || getMonthFromWeekStart(ws)) === selectedPeriod;
-    if (viewMode === 'quarterly') return row.quarter === selectedPeriod;
-    return false;
+    return matchesPeriod(row.date, row.month, row.quarter, viewMode, selectedPeriod);
   }).reduce((sum, row) => sum + (row.cash_collected || 0), 0);
 }
 
@@ -347,20 +325,14 @@ export function aggregateCashFromReps(
 // ============================================================================
 
 export function aggregateAttribution(
-  rows: AttributionWeeklyRow[],
+  rows: AttributionDailyRow[],
   segment: Segment,
   viewMode: ViewMode,
   selectedPeriod: string
 ): AttributionRow[] {
   const filtered = rows.filter(row => {
     if (!includeInSegment(row.segment, segment)) return false;
-    
-    const ws = toDateString(row.week_start);
-    
-    if (viewMode === 'weekly') return ws === selectedPeriod;
-    if (viewMode === 'monthly') return getMonthFromWeekStart(ws) === selectedPeriod;
-    if (viewMode === 'quarterly') return getQuarterFromMonth(getMonthFromWeekStart(ws)) === selectedPeriod;
-    return false;
+    return matchesPeriod(row.date, row.month, row.quarter, viewMode, selectedPeriod);
   });
 
   // Group by attribution_type + source and sum counts
@@ -399,18 +371,11 @@ export function aggregateAttribution(
 
 export function aggregateSalesReps(
   rows: SalesRepDailyRow[],
-  segment: Segment,
   viewMode: ViewMode,
   selectedPeriod: string
 ): SalesRepMetrics[] {
-  // Filter by period
   const filtered = rows.filter(row => {
-    const ws = toDateString(row.week_start);
-    
-    if (viewMode === 'weekly') return ws === selectedPeriod;
-    if (viewMode === 'monthly') return (row.month || getMonthFromWeekStart(ws)) === selectedPeriod;
-    if (viewMode === 'quarterly') return row.quarter === selectedPeriod;
-    return false;
+    return matchesPeriod(row.date, row.month, row.quarter, viewMode, selectedPeriod);
   });
 
   // Group by rep_name
@@ -422,53 +387,30 @@ export function aggregateSalesReps(
   }
 
   return Object.entries(byRep).map(([repName, repRows]) => {
-    const bitebot = repRows.filter(r => r.product?.toLowerCase() === 'bitebot');
-    const smilegen = repRows.filter(r => r.product?.toLowerCase() === 'smilegen');
-    
-    const sumRows = (arr: SalesRepDailyRow[]) => arr.reduce((acc, r) => ({
+    const totals = repRows.reduce((acc, r) => ({
+      callsMade: acc.callsMade + (r.calls_made || 0),
       demosBooked: acc.demosBooked + (r.demos_booked || 0),
       demosShowed: acc.demosShowed + (r.demos_showed || 0),
       demosNoShowed: acc.demosNoShowed + (r.demos_no_showed || 0),
       salesClosed: acc.salesClosed + (r.sales_closed || 0),
       cashCollected: acc.cashCollected + (r.cash_collected || 0),
       commissionEarned: acc.commissionEarned + (r.commission_earned || 0),
-    }), { demosBooked: 0, demosShowed: 0, demosNoShowed: 0, salesClosed: 0, cashCollected: 0, commissionEarned: 0 });
-
-    const bbTotals = sumRows(bitebot);
-    const sgTotals = sumRows(smilegen);
-    
-    // Apply segment filter to totals
-    let totalBooked = 0, totalShowed = 0, totalNoShowed = 0, totalClosed = 0, totalCash = 0, totalComm = 0;
-    
-    if (segment === 'company' || segment === 'bitebot') {
-      totalBooked += bbTotals.demosBooked;
-      totalShowed += bbTotals.demosShowed;
-      totalNoShowed += bbTotals.demosNoShowed;
-      totalClosed += bbTotals.salesClosed;
-      totalCash += bbTotals.cashCollected;
-      totalComm += bbTotals.commissionEarned;
-    }
-    if (segment === 'company' || segment === 'smilegen') {
-      totalBooked += sgTotals.demosBooked;
-      totalShowed += sgTotals.demosShowed;
-      totalNoShowed += sgTotals.demosNoShowed;
-      totalClosed += sgTotals.salesClosed;
-      totalCash += sgTotals.cashCollected;
-      totalComm += sgTotals.commissionEarned;
-    }
+    }), { 
+      callsMade: 0, demosBooked: 0, demosShowed: 0, demosNoShowed: 0, 
+      salesClosed: 0, cashCollected: 0, commissionEarned: 0 
+    });
 
     return {
       repName,
-      demosBooked: totalBooked,
-      demosShowed: totalShowed,
-      demosNoShowed: totalNoShowed,
-      salesClosed: totalClosed,
-      cashCollected: totalCash,
-      commissionEarned: totalComm,
-      showRate: totalBooked > 0 ? (totalShowed / totalBooked) * 100 : 0,
-      closeRate: totalShowed > 0 ? (totalClosed / totalShowed) * 100 : 0,
-      bitebot: bbTotals,
-      smilegen: sgTotals,
+      callsMade: totals.callsMade,
+      demosBooked: totals.demosBooked,
+      demosShowed: totals.demosShowed,
+      demosNoShowed: totals.demosNoShowed,
+      salesClosed: totals.salesClosed,
+      cashCollected: totals.cashCollected,
+      commissionEarned: totals.commissionEarned,
+      showRate: totals.demosBooked > 0 ? (totals.demosShowed / totals.demosBooked) * 100 : 0,
+      closeRate: totals.demosShowed > 0 ? (totals.salesClosed / totals.demosShowed) * 100 : 0,
     };
   }).sort((a, b) => b.cashCollected - a.cashCollected);
 }
@@ -479,32 +421,17 @@ export function aggregateSalesReps(
 
 export function getRepDailyActivity(
   rows: SalesRepDailyRow[],
-  segment: Segment,
   viewMode: ViewMode,
   selectedPeriod: string,
   repName?: string
 ): SalesRepDaily[] {
   return rows.filter(row => {
-    // Rep filter
     if (repName && repName !== 'all' && row.rep_name !== repName) return false;
-    
-    // Segment filter
-    const prod = row.product?.toLowerCase().trim() || '';
-    if (segment === 'bitebot' && prod !== 'bitebot') return false;
-    if (segment === 'smilegen' && prod !== 'smilegen') return false;
-    
-    // Period filter
-    const ws = toDateString(row.week_start);
-    
-    if (viewMode === 'weekly') return ws === selectedPeriod;
-    if (viewMode === 'monthly') return (row.month || getMonthFromWeekStart(ws)) === selectedPeriod;
-    if (viewMode === 'quarterly') return row.quarter === selectedPeriod;
-    return false;
+    return matchesPeriod(row.date, row.month, row.quarter, viewMode, selectedPeriod);
   }).map(row => ({
     date: toDateString(row.date),
-    weekStart: toDateString(row.week_start),
     repName: row.rep_name || '',
-    product: row.product || '',
+    callsMade: row.calls_made || 0,
     demosBooked: row.demos_booked || 0,
     demosShowed: row.demos_showed || 0,
     demosNoShowed: row.demos_no_showed || 0,
@@ -520,14 +447,44 @@ export function getRepDailyActivity(
 // ============================================================================
 
 export function buildTrends(
-  marketingRows: MarketingWeeklyRow[],
-  salesRows: SalesWeeklyRow[],
+  marketingRows: MarketingDailyRow[],
+  salesRows: SalesDailyRow[],
   repDailyRows: SalesRepDailyRow[],
-  segment: Segment
+  segment: Segment,
+  viewMode: ViewMode
 ): { marketing: Record<string, TrendPoint[]>; sales: Record<string, TrendPoint[]> } {
-  // Get unique weeks sorted desc
-  const weekValues = marketingRows.map(r => toDateString(r.week_start));
-  const weeks = Array.from(new Set(weekValues)).filter(Boolean).sort((a, b) => a.localeCompare(b)).slice(-6); // Last 6 weeks
+  // Get unique periods based on view mode
+  let periods: string[] = [];
+  
+  if (viewMode === 'daily') {
+    const dateSet = new Set<string>();
+    marketingRows.forEach(r => {
+      const d = toDateString(r.date);
+      if (d) dateSet.add(d);
+    });
+    periods = Array.from(dateSet).sort().slice(-14); // Last 14 days
+  } else if (viewMode === 'weekly') {
+    const weekSet = new Set<string>();
+    marketingRows.forEach(r => {
+      const ws = getWeekStart(toDateString(r.date));
+      if (ws) weekSet.add(ws);
+    });
+    periods = Array.from(weekSet).sort().slice(-8); // Last 8 weeks
+  } else if (viewMode === 'monthly') {
+    const monthSet = new Set<string>();
+    marketingRows.forEach(r => {
+      const m = r.month || getMonthFromDate(toDateString(r.date));
+      if (m) monthSet.add(m);
+    });
+    periods = Array.from(monthSet).sort().slice(-6); // Last 6 months
+  } else {
+    const qSet = new Set<string>();
+    marketingRows.forEach(r => {
+      const q = r.quarter || getQuarterFromDate(toDateString(r.date));
+      if (q) qSet.add(q);
+    });
+    periods = Array.from(qSet).sort().slice(-4); // Last 4 quarters
+  }
 
   const marketing: Record<string, TrendPoint[]> = {
     adSpend: [],
@@ -543,21 +500,29 @@ export function buildTrends(
     closeRate: [],
   };
 
-  for (const week of weeks) {
-    const mkt = aggregateMarketing(marketingRows, segment, 'weekly', week);
-    const sls = aggregateSales(salesRows, repDailyRows, mkt.demosShowed, segment, 'weekly', week);
+  for (const period of periods) {
+    const mkt = aggregateMarketing(marketingRows, segment, viewMode, period);
+    const sls = aggregateSales(salesRows, repDailyRows, mkt.demosShowed, segment, viewMode, period);
     
-    const label = new Date(week).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    let label = period;
+    if (viewMode === 'daily') {
+      label = new Date(period).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } else if (viewMode === 'weekly') {
+      label = new Date(period).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } else if (viewMode === 'monthly') {
+      const [year, month] = period.split('-');
+      label = new Date(parseInt(year), parseInt(month) - 1, 1).toLocaleDateString('en-US', { month: 'short' });
+    }
     
-    marketing.adSpend.push({ period: week, label, value: mkt.adSpend });
-    marketing.cpl.push({ period: week, label, value: mkt.cpl });
-    marketing.leads.push({ period: week, label, value: mkt.fbAttributedLeads });
-    marketing.demosBooked.push({ period: week, label, value: mkt.demosBooked });
-    marketing.showRate.push({ period: week, label, value: mkt.showRate });
+    marketing.adSpend.push({ period, label, value: mkt.adSpend });
+    marketing.cpl.push({ period, label, value: mkt.cpl });
+    marketing.leads.push({ period, label, value: mkt.fbAttributedLeads });
+    marketing.demosBooked.push({ period, label, value: mkt.demosBooked });
+    marketing.showRate.push({ period, label, value: mkt.showRate });
     
-    sales.cashCollected.push({ period: week, label, value: sls.cashCollected });
-    sales.closes.push({ period: week, label, value: sls.totalCloses });
-    sales.closeRate.push({ period: week, label, value: sls.closeRateDemosShowed });
+    sales.cashCollected.push({ period, label, value: sls.cashCollected });
+    sales.closes.push({ period, label, value: sls.totalCloses });
+    sales.closeRate.push({ period, label, value: sls.closeRateDemosShowed });
   }
 
   return { marketing, sales };
